@@ -1,0 +1,21 @@
+{
+  "name": "ModMenu",
+  "namespace": "Rakibei",
+  "version_number": "1.0.0",
+  "description": "Adds a Mods menu to the main menu with per-mod configuration editing.",
+  "website_url": "",
+  "dependencies": [],
+  "extra": {
+    "godot": {
+      "authors": ["Rakibei"],
+      "tags": ["ui", "utility"],
+      "description_rich": "",
+      "optional_dependencies": [],
+      "load_before": [],
+      "incompatibilities": [],
+      "compatible_mod_loader_version": ["7.0.1"],
+      "compatible_game_version": ["1.0.07"],
+      "config_schema": {}
+    }
+  }
+}
