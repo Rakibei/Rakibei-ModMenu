@@ -74,7 +74,6 @@ func _create_mod_menu() -> void:
 	mod_menu_root.name = "ModMenu"
 	mod_menu_root.z_index = 20
 	mod_menu_root.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	mod_menu_root.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(mod_menu_root)
 
 	mod_menu_panel = PanelContainer.new()
@@ -304,11 +303,10 @@ func _add_mod_row(mod_id: String, mod_data: Variant) -> void:
 	text_layer.clip_contents = true
 	row_button.add_child(text_layer)
 
-	var row_font_size := 36
+	var row_font_size := 24
 	var row_font: Font = null
 	var row_font_color := Color.WHITE
 	if options_button != null:
-		row_font_size = options_button.get_theme_font_size("font_size")
 		row_font = options_button.get_theme_font("font")
 		row_font_color = options_button.get_theme_color("font_color")
 
@@ -328,7 +326,7 @@ func _add_mod_row(mod_id: String, mod_data: Variant) -> void:
 	name_label.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
 	name_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	name_label.focus_mode = Control.FOCUS_NONE
-	#name_label.add_theme_font_size_override("font_size", row_font_size)
+	name_label.add_theme_font_size_override("font_size", row_font_size)
 	name_label.add_theme_color_override("font_color", row_font_color)
 	if row_font != null:
 		name_label.add_theme_font_override("font", row_font)
@@ -336,9 +334,9 @@ func _add_mod_row(mod_id: String, mod_data: Variant) -> void:
 
 	var version_label := Label.new()
 	version_label.theme = Theme.new()
-	version_label.text = "v%s" % version if not version.is_empty() else ""
 	version_label.add_theme_stylebox_override("normal", StyleBoxEmpty.new())
 	version_label.add_theme_stylebox_override("focus", StyleBoxEmpty.new())
+	version_label.text = "v%s" % version if not version.is_empty() else ""
 	version_label.anchor_left = 0.78
 	version_label.anchor_top = 0.0
 	version_label.anchor_right = 1.0
@@ -348,7 +346,7 @@ func _add_mod_row(mod_id: String, mod_data: Variant) -> void:
 	version_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 	version_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	version_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	#version_label.add_theme_font_size_override("font_size", row_font_size)
+	version_label.add_theme_font_size_override("font_size", row_font_size)
 	version_label.add_theme_color_override("font_color", row_font_color)
 	if row_font != null:
 		version_label.add_theme_font_override("font", row_font)
@@ -535,6 +533,7 @@ func _add_setting_row(
 	if not description.is_empty():
 		var description_label := Label.new()
 		description_label.text = description
+		description_label.add_theme_font_size_override("font_size", 16)
 		description_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 		description_label.modulate = Color(1.0, 1.0, 1.0, 0.65)
 		block.add_child(description_label)
@@ -661,9 +660,14 @@ func _on_save_pressed() -> void:
 		status_label.text = "Could not save config. Check the Mod Loader log for validation errors."
 		return
 
-	current_config = updated_config
+	# Reload the data that was actually written to disk before rebuilding
+	# the editor. update_config() can leave the in-memory ModConfig stale.
+	current_config = ModLoaderConfig.refresh_config_data(updated_config)
 	pending_config_data = current_config.data.duplicate(true)
 	has_unsaved_changes = false
+
+	_clear_content()
+	_build_mod_details_page()
 	status_label.text = "Saved"
 
 
@@ -691,11 +695,10 @@ func _get_schema_type(schema: Dictionary) -> String:
 
 
 func _get_setting_value(property_path: Array, property_schema: Dictionary) -> Variant:
-	var missing_marker := RefCounted.new()
-	var value = _get_path_value(pending_config_data, property_path, missing_marker)
+	var lookup := _try_get_path_value(pending_config_data, property_path)
 
-	if value != missing_marker:
-		return value
+	if lookup[0]:
+		return lookup[1]
 
 	if property_schema.has("default"):
 		return property_schema["default"]
@@ -713,20 +716,20 @@ func _get_setting_value(property_path: Array, property_schema: Dictionary) -> Va
 	return null
 
 
-func _get_path_value(root: Dictionary, property_path: Array, fallback: Variant) -> Variant:
+func _try_get_path_value(root: Dictionary, property_path: Array) -> Array:
 	var current: Variant = root
 
 	for key_variant in property_path:
 		if not (current is Dictionary):
-			return fallback
+			return [false, null]
 
 		var key := str(key_variant)
 		if not current.has(key):
-			return fallback
+			return [false, null]
 
 		current = current[key]
 
-	return current
+	return [true, current]
 
 
 func _set_path_value(root: Dictionary, property_path: Array, value: Variant) -> void:
