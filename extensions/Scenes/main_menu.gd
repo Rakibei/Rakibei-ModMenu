@@ -74,6 +74,7 @@ func _create_mod_menu() -> void:
 	mod_menu_root.name = "ModMenu"
 	mod_menu_root.z_index = 20
 	mod_menu_root.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	mod_menu_root.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(mod_menu_root)
 
 	mod_menu_panel = PanelContainer.new()
