@@ -1,6 +1,6 @@
 extends "res://Scenes/main_menu.gd"
 
-const MOD_MENU_VERSION := "1.2.2"
+const MOD_MENU_CONFIG_NAME := "user_config"
 
 var mod_menu_root: CenterContainer
 var mod_menu_panel: PanelContainer
@@ -252,6 +252,13 @@ func _refresh_mod_list() -> void:
 		if not ModLoaderMod.is_mod_active(mod_id):
 			continue
 
+		# Config schemas produce an immutable default.json. Give every active,
+		# configurable mod a writable config automatically so mod authors only
+		# need to define their schema/default values.
+		var mod_schema := ModLoaderConfig.get_config_schema(mod_id)
+		if _schema_has_settings(mod_schema):
+			_get_or_create_writable_config(mod_id)
+
 		active_mod_count += 1
 		var mod_data = mod_data_all[mod_id_variant]
 		_add_mod_row(mod_id, mod_data)
@@ -364,12 +371,13 @@ func _on_mod_row_pressed(mod_id: String, mod_data: Variant) -> void:
 	pending_config_data = {}
 	has_unsaved_changes = false
 
-	# Do not ask Mod Loader for a current config unless one actually exists.
-	# get_current_config() logs errors for mods without config files, which is
-	# perfectly valid for informational/non-configurable mods.
-	if _schema_has_settings(current_schema) and ModLoaderConfig.has_current_config(mod_id):
-		current_config = ModLoaderConfig.get_current_config(mod_id)
-		pending_config_data = current_config.data.duplicate(true)
+	# The Mod Loader's default config is intentionally read-only. If this mod is
+	# still using default.json, create/select a writable user.json cloned from it.
+	# Mods that already selected another non-default config are left untouched.
+	if _schema_has_settings(current_schema):
+		current_config = _get_or_create_writable_config(mod_id)
+		if current_config != null:
+			pending_config_data = current_config.data.duplicate(true)
 
 	var display_name := _get_manifest_string(mod_data, "name", mod_id)
 	var version := _get_manifest_string(mod_data, "version_number", "")
@@ -388,6 +396,51 @@ func _on_mod_row_pressed(mod_id: String, mod_data: Variant) -> void:
 
 	_clear_content()
 	_build_mod_details_page()
+
+
+func _get_or_create_writable_config(mod_id: String) -> Variant:
+	# Respect a mod/profile that is already using a writable named config.
+	if ModLoaderConfig.has_current_config(mod_id):
+		var active_config = ModLoaderConfig.get_current_config(mod_id)
+		if active_config != null and str(active_config.name) != ModLoaderConfig.DEFAULT_CONFIG_NAME:
+			return active_config
+
+	var configs := ModLoaderConfig.get_configs(mod_id)
+	if configs.is_empty():
+		return null
+
+	var writable_config: Variant = null
+
+	# Reuse the menu-created config if it already exists. This preserves the
+	# player's settings if their profile was temporarily switched back to default.
+	if configs.has(MOD_MENU_CONFIG_NAME):
+		writable_config = configs[MOD_MENU_CONFIG_NAME]
+	else:
+		var default_config = ModLoaderConfig.get_default_config(mod_id)
+		if default_config == null:
+			return null
+
+		writable_config = ModLoaderConfig.create_config(
+			mod_id,
+			MOD_MENU_CONFIG_NAME,
+			default_config.data.duplicate(true)
+		)
+
+	if writable_config == null:
+		return null
+
+	# Switch immediately for the running game...
+	ModLoaderConfig.set_current_config(writable_config)
+
+	# ...and persist the selection in the active Mod Loader user profile so the
+	# mod receives this writable config on future launches as well.
+	if ModLoaderUserProfile.is_initialized() and ModLoaderUserProfile.get_current() != null:
+		if not ModLoaderUserProfile.set_mod_current_config(mod_id, writable_config):
+			push_warning(
+				"[Rakibei-ModMenu] Created config for %s, but could not save it as the profile's current config." % mod_id
+			)
+
+	return writable_config
 
 
 func _build_mod_details_page() -> void:
